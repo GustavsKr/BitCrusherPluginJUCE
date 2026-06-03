@@ -1,0 +1,12 @@
+1. three knobs 
+    BIT DEPTH
+    DOWNSAMPLING
+    MIX(WET/DRY) - Original audio mixed together with the bitcrusher, nice addition
+
+2. APVTS AudioProcessorValueTreeState - understand it. This handles saving your settings, automation in the DAW, and will make it incredibly easy to connect a UI later
+
+3. Define params in the .h file and initialise them in the .cpp source
+
+4. Write the actuall processing math inside the ProcessBlock function
+
+5. implement smoothing so it doesnt 

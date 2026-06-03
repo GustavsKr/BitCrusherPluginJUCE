@@ -10,7 +10,8 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
                       #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
-                       )
+                    ),
+                    apvts(*this, nullptr, "Parameters", createParameterLayout())
 {
 }
 
@@ -88,7 +89,11 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
-    juce::ignoreUnused (sampleRate, samplesPerBlock);
+    auto numChannels = getTotalNumInputChannels();
+    
+    // Resize our vectors to match the number of audio channels (usually 2 for stereo)
+    mHeldSample.assign(numChannels, 0.0f);
+    mSampleCounter.assign(numChannels, 0);
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -145,11 +150,52 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
+
+    // 1. Fetch current parameter values from the APVTS
+    float bitDepth = *apvts.getRawParameterValue("BIT_DEPTH");
+    int downsampleFactor = static_cast<int>(*apvts.getRawParameterValue("DOWNSAMPLE"));
+    float mix = *apvts.getRawParameterValue("MIX");
+
+    // Calculate how many discrete amplitude levels we have based on the bit depth.
+    // Math formula: Total Levels = 2^bitDepth
+    float totalLevels = std::pow(2.0f, bitDepth);
+
+    
+    // 2. Loop through each audio channel (Left and Right)
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer (channel);
-        juce::ignoreUnused (channelData);
-        // ..do something to the data...
+
+        // 3. Loop through every single sample in the current block
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            float rawSample = channelData[sample];
+            float processedSample = rawSample;
+
+            // --- STEP A: DOWNSAMPLING ---
+            // We only grab a new sample value when our counter hits 0.
+            if (mSampleCounter[channel] == 0)
+            {
+                mHeldSample[channel] = processedSample;
+            }
+            
+            // Overwrite the current sample with the one we are "holding"
+            processedSample = mHeldSample[channel];
+
+            // Increment counter, wrap it around based on our downsample factor
+            mSampleCounter[channel] = (mSampleCounter[channel] + 1) % downsampleFactor;
+
+
+            // --- STEP B: BIT DEPTH REDUCTION ---
+            // Scale sample up to our "integer range", round it, and scale it back down.
+            // Example: If totalLevels is 4, values clamp to -1.0, -0.5, 0.0, 0.5, 1.0
+            processedSample = std::round(processedSample * totalLevels) / totalLevels;
+
+
+            // --- STEP C: WET/DRY MIX ---
+            // Linear blend: (Dry Signal * (1 - Mix)) + (Wet Signal * Mix)
+            channelData[sample] = (rawSample * (1.0f - mix)) + (processedSample * mix);
+        }
     }
 }
 
@@ -161,7 +207,9 @@ bool AudioPluginAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* AudioPluginAudioProcessor::createEditor()
 {
-    return new AudioPluginAudioProcessorEditor (*this);
+    // return new AudioPluginAudioProcessorEditor (*this); UNCOMMENT LATER WHEN CREATING OUR GUI
+
+    return new juce::GenericAudioProcessorEditor (*this);
 }
 
 //==============================================================================
@@ -185,4 +233,23 @@ void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeI
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new AudioPluginAudioProcessor();
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    // Bit Depth: 1 bit (pure noise) to 32 bits (pristine). Default to 16.
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("BIT_DEPTH", 1), "Bit Depth", 1.0f, 32.0f, 16.0f));
+
+    // Downsample: 1 (no downsampling) to 50 (hold every 50th sample). Default to 1.
+    layout.add(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID("DOWNSAMPLE", 1), "Downsample", 1, 50, 1));
+
+    // Mix: 0.0 (completely dry) to 1.0 (completely wet). Default to 1.0.
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("MIX", 1), "Mix", 0.0f, 1.0f, 1.0f));
+
+    return layout;
 }
