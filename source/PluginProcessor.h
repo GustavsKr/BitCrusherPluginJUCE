@@ -42,8 +42,9 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-private:
     juce::AudioProcessorValueTreeState apvts;
+    
+    private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     // Member variables for the downsampling logic (one per channel for stereo)

@@ -18,5 +18,15 @@ private:
     // access the processor object that created it.
     AudioPluginAudioProcessor& processorRef;
 
+    juce::Slider bitDepthSlider;
+    juce::Slider downsampleSlider;
+    juce::Slider mixSlider;
+    
+    using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
+    
+    std::unique_ptr<Attachment> bitDepthAttachment;
+    std::unique_ptr<Attachment> downsampleAttachment;
+    std::unique_ptr<Attachment> mixAttachment;
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessorEditor)
 };

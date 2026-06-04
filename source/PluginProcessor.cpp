@@ -207,9 +207,9 @@ bool AudioPluginAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* AudioPluginAudioProcessor::createEditor()
 {
-    // return new AudioPluginAudioProcessorEditor (*this); UNCOMMENT LATER WHEN CREATING OUR GUI
+    return new AudioPluginAudioProcessorEditor (*this);
 
-    return new juce::GenericAudioProcessorEditor (*this);
+    // return new juce::GenericAudioProcessorEditor (*this);
 }
 
 //==============================================================================
