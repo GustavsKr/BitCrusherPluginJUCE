@@ -43,13 +43,15 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
-    
+
     private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     // Member variables for the downsampling logic (one per channel for stereo)
     std::vector<float> mHeldSample;
     std::vector<int> mSampleCounter;
+
+    juce::LinearSmoothedValue<float> smoothedMix;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessor)
 };

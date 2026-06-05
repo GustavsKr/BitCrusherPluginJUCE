@@ -94,6 +94,8 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     // Resize our vectors to match the number of audio channels (usually 2 for stereo)
     mHeldSample.assign(numChannels, 0.0f);
     mSampleCounter.assign(numChannels, 0);
+
+    smoothedMix.reset(sampleRate, 0.02);
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -152,15 +154,26 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // interleaved by keeping the same state.
 
     // 1. Fetch current parameter values from the APVTS
-    float bitDepth = *apvts.getRawParameterValue("BIT_DEPTH");
+    float crushAmount = *apvts.getRawParameterValue("CRUSH");
+    // Map 0.0 (Left) to 16 bits, and 1.0 (Right) to 2 bits!
+    float bitDepth = juce::jmap(crushAmount, 0.0f, 1.0f, 16.0f, 2.0f);
+
     int downsampleFactor = static_cast<int>(*apvts.getRawParameterValue("DOWNSAMPLE"));
     float mix = *apvts.getRawParameterValue("MIX");
+    smoothedMix.setTargetValue(mix);
 
     // Calculate how many discrete amplitude levels we have based on the bit depth.
     // Math formula: Total Levels = 2^bitDepth
     float totalLevels = std::pow(2.0f, bitDepth);
-
+    int numSamples = buffer.getNumSamples();
+    std::vector<float> smoothedMixValues(numSamples);
     
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        // Generate the ramp steps. This advances the smoother safely for the whole block.
+        smoothedMixValues[sample] = smoothedMix.getNextValue();
+    }
+
     // 2. Loop through each audio channel (Left and Right)
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -237,19 +250,18 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 
 juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::createParameterLayout()
 {
-    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    // Bit Depth: 1 bit (pure noise) to 32 bits (pristine). Default to 16.
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("BIT_DEPTH", 1), "Bit Depth", 1.0f, 32.0f, 16.0f));
+    // Change "BIT_DEPTH" to "CRUSH". Range is 0.0 (Clean) to 1.0 (Destroyed)
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "CRUSH", 
+        "Crush", 
+        0.0f, 
+        1.0f, 
+        0.0f));
 
-    // Downsample: 1 (no downsampling) to 50 (hold every 50th sample). Default to 1.
-    layout.add(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID("DOWNSAMPLE", 1), "Downsample", 1, 50, 1));
+    params.push_back(std::make_unique<juce::AudioParameterInt>("DOWNSAMPLE", "Downsample", 1, 32, 1));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("MIX", "Mix", 0.0f, 1.0f, 0.5f));
 
-    // Mix: 0.0 (completely dry) to 1.0 (completely wet). Default to 1.0.
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("MIX", 1), "Mix", 0.0f, 1.0f, 1.0f));
-
-    return layout;
+    return { params.begin(), params.end() };
 }
