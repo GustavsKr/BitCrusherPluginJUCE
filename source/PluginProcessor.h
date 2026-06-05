@@ -46,12 +46,15 @@ public:
 
     private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-
+    
+    juce::LinearSmoothedValue<float> smoothedMix;
+    juce::LinearSmoothedValue<float> smoothedTone;
     // Member variables for the downsampling logic (one per channel for stereo)
     std::vector<float> mHeldSample;
     std::vector<int> mSampleCounter;
+    std::vector<float> mFilterState;
+    float mFilterAlpha = 0.15f;
 
-    juce::LinearSmoothedValue<float> smoothedMix;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessor)
 };

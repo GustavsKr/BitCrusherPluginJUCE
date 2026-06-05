@@ -94,8 +94,16 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     // Resize our vectors to match the number of audio channels (usually 2 for stereo)
     mHeldSample.assign(numChannels, 0.0f);
     mSampleCounter.assign(numChannels, 0);
+    mFilterState.resize(numChannels, 0.0f);
 
+    // Initialize both smoothers to glide over 20 milliseconds (0.02s) - only for Tone and Mix knobs
     smoothedMix.reset(sampleRate, 0.02);
+    smoothedTone.reset(sampleRate, 0.02);
+
+    // Calculate a stable 1-pole filter coefficient for a ~1200Hz tilt point
+    // This scales automatically whether the DAW runs at 44.1kHz, 48kHz, or 96kHz.
+    mFilterAlpha = static_cast<float>(2.0 * juce::MathConstants<double>::pi * 1200.0 / sampleRate);
+    mFilterAlpha = juce::jlimit(0.001f, 0.99f, mFilterAlpha); // Keep math safe
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -132,7 +140,6 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
 {
     juce::ignoreUnused (midiMessages);
-
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
@@ -155,31 +162,32 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // 1. Fetch current parameter values from the APVTS
     float crushAmount = *apvts.getRawParameterValue("CRUSH");
-    // Map 0.0 (Left) to 16 bits, and 1.0 (Right) to 2 bits!
-    float bitDepth = juce::jmap(crushAmount, 0.0f, 1.0f, 16.0f, 2.0f);
-
+    float bitDepth = juce::jmap(crushAmount, 0.0f, 1.0f, 16.0f, 2.0f); // Map 0.0 (Left) to 16 bits, and 1.0 (Right) to 2 bits
     int downsampleFactor = static_cast<int>(*apvts.getRawParameterValue("DOWNSAMPLE"));
+    float tone = *apvts.getRawParameterValue("TONE");
+    smoothedTone.setTargetValue(tone);
     float mix = *apvts.getRawParameterValue("MIX");
     smoothedMix.setTargetValue(mix);
 
     // Calculate how many discrete amplitude levels we have based on the bit depth.
     // Math formula: Total Levels = 2^bitDepth
     float totalLevels = std::pow(2.0f, bitDepth);
+
+    // 2. Pre-calculate BOTH smoothing ramps for the entire block
     int numSamples = buffer.getNumSamples();
     std::vector<float> smoothedMixValues(numSamples);
-    
+    std::vector<float> smoothedToneValues(numSamples);
     for (int sample = 0; sample < numSamples; ++sample)
     {
         // Generate the ramp steps. This advances the smoother safely for the whole block.
         smoothedMixValues[sample] = smoothedMix.getNextValue();
+        smoothedToneValues[sample] = smoothedTone.getNextValue();
     }
 
-    // 2. Loop through each audio channel (Left and Right)
+    // 3. Main Audio Channel Processing Loops
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer (channel);
-
-        // 3. Loop through every single sample in the current block
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float rawSample = channelData[sample];
@@ -194,8 +202,6 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             
             // Overwrite the current sample with the one we are "holding"
             processedSample = mHeldSample[channel];
-
-            // Increment counter, wrap it around based on our downsample factor
             mSampleCounter[channel] = (mSampleCounter[channel] + 1) % downsampleFactor;
 
 
@@ -205,9 +211,23 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             processedSample = std::round(processedSample * totalLevels) / totalLevels;
 
 
-            // --- STEP C: WET/DRY MIX ---
-            // Linear blend: (Dry Signal * (1 - Mix)) + (Wet Signal * Mix)
-            channelData[sample] = (rawSample * (1.0f - mix)) + (processedSample * mix);
+            // --- STEP C: SMOOTHED TILT EQ SHAPING ---
+            // Extract the low frequencies using our 1-pole filter math
+            float lp = mFilterState[channel] + mFilterAlpha * (processedSample - mFilterState[channel]);
+            mFilterState[channel] = lp; // Update filter memory
+
+            // High frequencies are whatever is left over when you subtract the lows
+            float hp = processedSample - lp;
+
+            // Grab the current smooth knob position for this specific sample
+            float currentTone = smoothedToneValues[sample];
+
+            // Crossfade math: 2.0x multiplier keeps the volume perfectly unity/flat at 0.5
+            processedSample = 2.0f * ((1.0f - currentTone) * lp + currentTone * hp);
+
+            // --- STEP D: SMOOTHED WET/DRY MIX ---
+            float currentMix = smoothedMixValues[sample];
+            channelData[sample] = (rawSample * (1.0f - currentMix)) + (processedSample * currentMix);
         }
     }
 }
@@ -261,6 +281,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::c
         0.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterInt>("DOWNSAMPLE", "Downsample", 1, 32, 1));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("TONE", "Tone", 0.0f, 1.0f, 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>("MIX", "Mix", 0.0f, 1.0f, 0.5f));
 
     return { params.begin(), params.end() };

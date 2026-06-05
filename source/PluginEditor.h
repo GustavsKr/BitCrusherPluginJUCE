@@ -20,12 +20,14 @@ private:
 
     juce::Slider crushSlider;
     juce::Slider downsampleSlider;
+    juce::Slider toneSlider;
     juce::Slider mixSlider;
     
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     
     std::unique_ptr<Attachment> crushAttachment;
     std::unique_ptr<Attachment> downsampleAttachment;
+    std::unique_ptr<Attachment> toneAttachment;
     std::unique_ptr<Attachment> mixAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessorEditor)
