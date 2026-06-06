@@ -26,8 +26,6 @@ public:
     {
         // 1. Draw the CRT terminal background frame
         g.fillAll (juce::Colour (0xFF050A05)); 
-        g.setColour (juce::Colour (0xFF1F4D1F));
-        g.drawRect (getLocalBounds(), 2); 
 
         // 2. Fetch our safe 1024 audio sample snapshot from the Step 1 highway
         auto samples = processorRef.getVisualizerSamples();
