@@ -47,7 +47,7 @@ AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
 //==============================================================================
 void AudioPluginAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    // 1. Gojira Matte Obsidian Background
+    // 1. Background
     g.fillAll (juce::Colour (0xFF161616));
     
     // 2. Clear Screen Border Frame

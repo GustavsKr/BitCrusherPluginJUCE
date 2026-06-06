@@ -79,7 +79,7 @@ public:
         // LAYER A: THE CLEAN OSCILLOSCOPE MODE (Knobs at Zero)
         if (isCleanState)
         {
-            g.setColour (juce::Colour (0xFF00FF66)); // Vibrant emerald-cyber green
+            g.setColour (juce::Colour (0xFF55FF55)); // cyber green
             juce::Path wavePath;
             
             for (int x = 0; x < getWidth(); ++x)
