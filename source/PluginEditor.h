@@ -36,7 +36,7 @@ public:
         if (samples.size() < 1024) return; // Wait until our buffer bucket fills up
 
         // ==========================================================
-        // --- NEW: STEP 4 MATHEMATICAL FFT CALCULATIONS ---
+        // --- STEP 1: MATHEMATICAL FFT CALCULATIONS ---
         // ==========================================================
         
         // A. Apply a manual Hann Window loop to eliminate edge-clicking mathematical noise
@@ -65,7 +65,7 @@ public:
         }
 
         // ==========================================================
-        // --- TEXT GRID RENDERING ENGINE ---
+        // --- STEP 2: TEXT GRID & VECTOR RENDERING ENGINE ---
         // ==========================================================
         g.setFont (juce::FontOptions ("Courier New", 12.0f, juce::Font::plain));
         int charWidth = 8;
@@ -74,10 +74,11 @@ public:
         int numCols = getWidth() / charWidth;
         int numRows = getHeight() / charHeight;
 
-        bool isCleanState = (crush < 0.01f && downsample <= 1.01f);
+        // Check if downsample knob is turned off (at its baseline of 1.0)
+        bool useVectorWave = (downsample <= 1.01f);
 
-        // LAYER A: THE CLEAN OSCILLOSCOPE MODE (Knobs at Zero)
-        if (isCleanState)
+        // LAYER A: THE CLEAN OSCILLOSCOPE MODE (Rendered if Downsample is at 0)
+        if (useVectorWave)
         {
             g.setColour (juce::Colour (0xFF55FF55)); // cyber green
             juce::Path wavePath;
@@ -91,26 +92,23 @@ public:
                 else        wavePath.lineTo (static_cast<float>(x), yPos);
             }
             g.strokePath (wavePath, juce::PathStrokeType (2.0f));
-            return; 
         }
 
-        // LAYER B: THE DEGRADED ASCII TERMINAL MODE WITH FFT FREQUENCY COLUMNS
+        // LAYER B: THE DEGRADED GRID ARCHITECTURE WITH FREQUENCY COLUMNS
         juce::String waveSymbol = "·";
         if (downsample > 2.0f)  waveSymbol = "-";
         if (downsample > 6.0f)  waveSymbol = "=";
         if (downsample > 12.0f) waveSymbol = "#";
-        if (downsample > 24.0f) waveSymbol = "█"; 
+        if (downsample > 24.0f) waveSymbol = "X";
 
         for (int col = 0; col < numCols; ++col)
         {
-            // --- NEW FFT MAPPING MATH ---
-            // Skew the columns exponentially so the bass frequencies get more screen space than the treble
+            // --- FFT MAPPING MATH ---
             float colNormalized = static_cast<float>(col) / static_cast<float>(numCols);
             float skewedMapping = std::pow (colNormalized, 1.5f); 
-            int fftBin = static_cast<int>(skewedMapping * 250); // Focus on the first 250 highly active bins
+            int fftBin = static_cast<int>(skewedMapping * 250); 
             fftBin = juce::jlimit (0, 511, fftBin);
             
-            // This is the specific column frequency volume level!
             float columnFrequencyAmp = frequencies[fftBin];
 
             // Figure out where the foreground waveform character sits in this column
@@ -124,22 +122,25 @@ public:
                 int xPos = col * charWidth;
                 int yPos = row * charHeight;
 
-                // DRAW FOREGROUND: The active audio wave position
+                // DRAW FOREGROUND WAVE SYMBOLS (Only if downsample knob is active!)
                 if (row == targetRow)
                 {
-                    g.setColour (juce::Colour (0xFF55FF55)); // Super bright neon green
-                    g.drawText (waveSymbol, xPos, yPos, charWidth, charHeight, juce::Justification::centred);
+                    if (!useVectorWave)
+                    {
+                        g.setColour (juce::Colour (0xFF55FF55)); // Super bright neon green
+                        g.drawText (waveSymbol, xPos, yPos, charWidth, charHeight, juce::Justification::centred);
+                    }
                 }
-                // DRAW BACKGROUND MATRIX COLUMNS: Driven by active local frequencies!
+                // DRAW BACKGROUND MATRIX COLUMNS: Driven by active local frequencies & crush factor!
                 else
                 {
                     float triggerChance = (static_cast<float>(rand() % 100) / 100.0f);
                     
-                    // --- NEW MATRIX COEFFICIENT ---
-                    // The activation height/probability of code rain in this specific column 
-                    // is directly scaled by the exact frequency volume of the music playing!
+                    // --- MATRIX COEFFICIENT ---
                     float columnFactor = (static_cast<float>(numRows - row) / static_cast<float>(numRows));
-                    float activationThreshold = columnFrequencyAmp * crush * (columnFactor * 1.8f);
+                    
+                    // UPDATED MATH: Increased multiplier from 1.8f to 3.5f for heavy saturation at max crush
+                    float activationThreshold = columnFrequencyAmp * crush * (columnFactor * 3.5f);
 
                     if (triggerChance < activationThreshold)
                     {
