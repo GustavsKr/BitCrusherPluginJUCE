@@ -44,16 +44,36 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    private:
+    // Atomic flags so the GUI can see exactly how "broken" the sound is
+    std::atomic<bool> isGuiActive { false };
+    std::atomic<float> currentCrushVisual { 0.0f };
+    std::atomic<float> currentDownsampleVisual { 1.0f };
+    std::atomic<float> currentRmsLevel { 0.0f }; // Audio loudness track
+
+    // The FIFO Ring Buffer Constants
+    static constexpr int fftSize = 1024; 
+    
+    // Grabs a block of audio samples safely for the UI thread
+    std::vector<float> getVisualizerSamples();
+
+private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     
     juce::LinearSmoothedValue<float> smoothedMix;
     juce::LinearSmoothedValue<float> smoothedTone;
     // Member variables for the downsampling logic (one per channel for stereo)
-    std::vector<float> mHeldSample;
-    std::vector<int> mSampleCounter;
     std::vector<float> mFilterState;
     float mFilterAlpha = 0.15f;
+    std::vector<float> mHeldSample;
+    std::vector<int> mSampleCounter;
+
+    
+    std::vector<float> fifoBuffer;
+    int fifoIndex = 0;
+    bool fifoReady = false;
+    std::vector<float> visualizerStorage; // Holds the safe copy for the UI
+    juce::CriticalSection fifoCriticalSection; // Lock preventing thread crashes
+
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessor)

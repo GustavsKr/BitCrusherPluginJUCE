@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(AUDIO_PLUGIN_EXAMPLE VERSION 0.0.1)
+project(BIT_CRUSHER VERSION 0.0.1)
 
 
 # This logic checks for CPM and downloads it if it's not found.
@@ -35,12 +35,12 @@ CPMAddPackage(
 # juce_set_aax_sdk_path(...)
 
 # `juce_add_plugin` adds a static library target with the name passed as the first argument
-# (AudioPluginExample here). This target is a normal CMake target, but has a lot of extra properties set
+# (BitCrusher here). This target is a normal CMake target, but has a lot of extra properties set
 # up by default. As well as this shared code static library, this function adds targets for each of
 # the formats specified by the FORMATS arguments. This function accepts many optional arguments.
 # Check the readme at `docs/CMake API.md` in the JUCE repo for the full list.
 
-juce_add_plugin(AudioPluginExample
+juce_add_plugin(BitCrusher
     # VERSION ...                               # Set this if the plugin version is different to the project version
     # ICON_BIG ...                              # ICON_* arguments specify a path to an image file to use as an icon for the Standalone
     # ICON_SMALL ...
@@ -55,7 +55,7 @@ juce_add_plugin(AudioPluginExample
     PLUGIN_CODE Dem0                            # A unique four-character plugin id with exactly one upper-case character
                                                 # GarageBand 10.3 requires the first letter to be upper-case, and the remaining letters to be lower-case
     FORMATS AU VST3 Standalone                  # The formats to build. Other valid formats are: AAX Unity VST AU AUv3
-    PRODUCT_NAME "Audio Plugin Example")        # The name of the final executable, which can differ from the target name
+    PRODUCT_NAME "B1tCrush3r")                 # The name of the final executable, which can differ from the target name
 
 # `juce_generate_juce_header` will create a JuceHeader.h for a given target, which will be generated
 # into your build tree. This should be included with `#include <JuceHeader.h>`. The include path for
@@ -63,14 +63,14 @@ juce_add_plugin(AudioPluginExample
 # include all your JUCE module headers; if you're happy to include module headers directly, you
 # probably don't need to call this.
 
-# juce_generate_juce_header(AudioPluginExample)
+# juce_generate_juce_header(BitCrusher)
 
 # `target_sources` adds source files to a target. We pass the target that needs the sources as the
 # first argument, then a visibility parameter for the sources which should normally be PRIVATE.
 # Finally, we supply a list of source files that will be built into the target. This is a standard
 # CMake command.
 
-target_sources(AudioPluginExample
+target_sources(BitCrusher
     PRIVATE
         source/PluginEditor.cpp
         source/PluginProcessor.cpp)
@@ -82,7 +82,7 @@ target_sources(AudioPluginExample
 # definitions will be visible both to your code, and also the JUCE module code, so for new
 # definitions, pick unique names that are unlikely to collide! This is a standard CMake command.
 
-target_compile_definitions(AudioPluginExample
+target_compile_definitions(BitCrusher
     PUBLIC
         # JUCE_WEB_BROWSER and JUCE_USE_CURL would be on by default, but you might not need them.
         JUCE_WEB_BROWSER=0  # If you remove this, add `NEEDS_WEB_BROWSER TRUE` to the `juce_add_plugin` call
@@ -104,10 +104,11 @@ target_compile_definitions(AudioPluginExample
 # linked automatically. If we'd generated a binary data target above, we would need to link to it
 # here too. This is a standard CMake command.
 
-target_link_libraries(AudioPluginExample
+target_link_libraries(BitCrusher
     PRIVATE
         # AudioPluginData           # If we'd created a binary data target, we'd link to it here
         juce::juce_audio_utils
+        juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

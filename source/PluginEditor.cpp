@@ -3,9 +3,13 @@
 
 //==============================================================================
 AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAudioProcessor& p)
-    : AudioProcessorEditor (&p), processorRef (p)
+    : AudioProcessorEditor (&p), processorRef (p), terminalVisualizer (p)
 {
     juce::ignoreUnused (processorRef);
+
+    processorRef.isGuiActive = true;
+    setResizable (true, true);
+    setResizeLimits (400, 300, 1000, 700); // Set safety limits so it can't be crushed to 0px
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
     setSize (600, 400);
@@ -28,10 +32,13 @@ AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAud
 
     setupKnob(mixSlider);
     mixAttachment = std::make_unique<Attachment>(processorRef.apvts, "MIX", mixSlider);
+
+    addAndMakeVisible (terminalVisualizer);
 }
 
 AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
 {
+    processorRef.isGuiActive = false;
 }
 
 //==============================================================================
@@ -41,8 +48,6 @@ void AudioPluginAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
     g.setColour (juce::Colours::white);
     g.setFont (juce::FontOptions (16.0f));
-    
-    g.drawText ("Future Visualizer / Top Workspace Area", 0, 0, getWidth(), 250, juce::Justification::centred);
 
     auto bottomStrip = getLocalBounds().removeFromBottom(150);
     auto columnWidth = bottomStrip.getWidth() / 4;
@@ -59,10 +64,11 @@ void AudioPluginAudioProcessorEditor::resized()
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
     auto area = getLocalBounds();
-    auto topSpaceReserved = area.removeFromTop(250); 
-    auto columnWidth = area.getWidth() / 4;
+    int visualizerHeight = area.getHeight() * 0.6f;
+    terminalVisualizer.setBounds (area.removeFromTop (visualizerHeight).reduced (10));
     
     // .reduced(10) leaves a nice margin around them so they aren't squished together.
+    auto columnWidth = area.getWidth() / 4;
     crushSlider.setBounds      (area.removeFromLeft(columnWidth).reduced(10));
     downsampleSlider.setBounds (area.removeFromLeft(columnWidth).reduced(10));
     toneSlider.setBounds       (area.removeFromLeft(columnWidth).reduced(10));

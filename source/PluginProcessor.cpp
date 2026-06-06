@@ -96,10 +96,15 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     mSampleCounter.assign(numChannels, 0);
     mFilterState.resize(numChannels, 0.0f);
 
+    // Initialize Visualizer Buffers
+    fifoBuffer.assign (fftSize, 0.0f);
+    visualizerStorage.assign (fftSize, 0.0f);
+    fifoIndex = 0;
+    fifoReady = false;
+
     // Initialize both smoothers to glide over 20 milliseconds (0.02s) - only for Tone and Mix knobs
     smoothedMix.reset(sampleRate, 0.02);
     smoothedTone.reset(sampleRate, 0.02);
-
     // Calculate a stable 1-pole filter coefficient for a ~1200Hz tilt point
     // This scales automatically whether the DAW runs at 44.1kHz, 48kHz, or 96kHz.
     mFilterAlpha = static_cast<float>(2.0 * juce::MathConstants<double>::pi * 1200.0 / sampleRate);
@@ -230,6 +235,35 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             channelData[sample] = (rawSample * (1.0f - currentMix)) + (processedSample * currentMix);
         }
     }
+
+    // If GUI is active (plugin not closed), PUSH data to the visualiser  
+    if (isGuiActive.load())
+    {
+        // 1. Broadcast parameter levels to the visualizer
+        currentCrushVisual.store(crushAmount);
+        currentDownsampleVisual.store(static_cast<float>(downsampleFactor));
+
+        // 2. Calculate the average loudness (RMS) of the block (Mono fallback)
+        float rms = buffer.getRMSLevel(0, 0, numSamples);
+        currentRmsLevel.store(rms);
+
+        // 3. Collect samples into our FIFO ring buffer (using Left Channel)
+        auto* leftChannel = buffer.getReadPointer(0);
+        
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            fifoBuffer[fifoIndex] = leftChannel[sample];
+            fifoIndex++;
+
+            // If our buffer bucket is full (hit 1024 samples), lock it and swap arrays!
+            if (fifoIndex >= fftSize)
+            {
+                const juce::ScopedLock sl (fifoCriticalSection);
+                visualizerStorage = fifoBuffer; // Thread-safe handover
+                fifoIndex = 0;
+            }
+        }
+    }
 }
 
 //==============================================================================
@@ -285,4 +319,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::c
     params.push_back(std::make_unique<juce::AudioParameterFloat>("MIX", "Mix", 0.0f, 1.0f, 0.5f));
 
     return { params.begin(), params.end() };
+}
+
+std::vector<float> AudioPluginAudioProcessor::getVisualizerSamples()
+{
+    const juce::ScopedLock sl (fifoCriticalSection);
+    return visualizerStorage;
 }
