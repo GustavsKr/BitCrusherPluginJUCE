@@ -1,6 +1,6 @@
 #pragma once
-
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "dsp/BitCrusher.h"
 
 //==============================================================================
 class AudioPluginAudioProcessor final : public juce::AudioProcessor
@@ -59,14 +59,7 @@ public:
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     
-    juce::LinearSmoothedValue<float> smoothedMix;
-    juce::LinearSmoothedValue<float> smoothedTone;
-    // Member variables for the downsampling logic (one per channel for stereo)
-    std::vector<float> mFilterState;
-    float mFilterAlpha = 0.15f;
-    std::vector<float> mHeldSample;
-    std::vector<int> mSampleCounter;
-
+    BitCrusher crusherEngine;
     
     std::vector<float> fifoBuffer;
     int fifoIndex = 0;

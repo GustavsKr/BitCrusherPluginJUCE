@@ -91,24 +91,13 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     // initialisation that you need..
     auto numChannels = getTotalNumInputChannels();
     
-    // Resize our vectors to match the number of audio channels (usually 2 for stereo)
-    mHeldSample.assign(numChannels, 0.0f);
-    mSampleCounter.assign(numChannels, 0);
-    mFilterState.resize(numChannels, 0.0f);
+    crusherEngine.prepare (sampleRate, numChannels);
 
     // Initialize Visualizer Buffers
     fifoBuffer.assign (fftSize, 0.0f);
     visualizerStorage.assign (fftSize, 0.0f);
     fifoIndex = 0;
     fifoReady = false;
-
-    // Initialize both smoothers to glide over 20 milliseconds (0.02s) - only for Tone and Mix knobs
-    smoothedMix.reset(sampleRate, 0.02);
-    smoothedTone.reset(sampleRate, 0.02);
-    // Calculate a stable 1-pole filter coefficient for a ~1200Hz tilt point
-    // This scales automatically whether the DAW runs at 44.1kHz, 48kHz, or 96kHz.
-    mFilterAlpha = static_cast<float>(2.0 * juce::MathConstants<double>::pi * 1200.0 / sampleRate);
-    mFilterAlpha = juce::jlimit(0.001f, 0.99f, mFilterAlpha); // Keep math safe
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -165,101 +154,35 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
 
-    // 1. Fetch current parameter values from the APVTS
+    // 1. Extract values from APVTS
     float crushAmount = *apvts.getRawParameterValue("CRUSH");
-    float bitDepth = juce::jmap(crushAmount, 0.0f, 1.0f, 16.0f, 2.0f); // Map 0.0 (Left) to 16 bits, and 1.0 (Right) to 2 bits
     int downsampleFactor = static_cast<int>(*apvts.getRawParameterValue("DOWNSAMPLE"));
     float tone = *apvts.getRawParameterValue("TONE");
-    smoothedTone.setTargetValue(tone);
     float mix = *apvts.getRawParameterValue("MIX");
-    smoothedMix.setTargetValue(mix);
 
-    // Calculate how many discrete amplitude levels we have based on the bit depth.
-    // Math formula: Total Levels = 2^bitDepth
-    float totalLevels = std::pow(2.0f, bitDepth);
+    // 2. Run the BitCrusher DSP
+    crusherEngine.process (buffer, crushAmount, downsampleFactor, tone, mix);
 
-    // 2. Pre-calculate BOTH smoothing ramps for the entire block
-    int numSamples = buffer.getNumSamples();
-    std::vector<float> smoothedMixValues(numSamples);
-    std::vector<float> smoothedToneValues(numSamples);
-    for (int sample = 0; sample < numSamples; ++sample)
-    {
-        // Generate the ramp steps. This advances the smoother safely for the whole block.
-        smoothedMixValues[sample] = smoothedMix.getNextValue();
-        smoothedToneValues[sample] = smoothedTone.getNextValue();
-    }
-
-    // 3. Main Audio Channel Processing Loops
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-        {
-            float rawSample = channelData[sample];
-            float processedSample = rawSample;
-
-            // --- STEP A: DOWNSAMPLING ---
-            // We only grab a new sample value when our counter hits 0.
-            if (mSampleCounter[channel] == 0)
-            {
-                mHeldSample[channel] = processedSample;
-            }
-            
-            // Overwrite the current sample with the one we are "holding"
-            processedSample = mHeldSample[channel];
-            mSampleCounter[channel] = (mSampleCounter[channel] + 1) % downsampleFactor;
-
-
-            // --- STEP B: BIT DEPTH REDUCTION ---
-            // Scale sample up to our "integer range", round it, and scale it back down.
-            // Example: If totalLevels is 4, values clamp to -1.0, -0.5, 0.0, 0.5, 1.0
-            processedSample = std::round(processedSample * totalLevels) / totalLevels;
-
-
-            // --- STEP C: SMOOTHED TILT EQ SHAPING ---
-            // Extract the low frequencies using our 1-pole filter math
-            float lp = mFilterState[channel] + mFilterAlpha * (processedSample - mFilterState[channel]);
-            mFilterState[channel] = lp; // Update filter memory
-
-            // High frequencies are whatever is left over when you subtract the lows
-            float hp = processedSample - lp;
-
-            // Grab the current smooth knob position for this specific sample
-            float currentTone = smoothedToneValues[sample];
-
-            // Crossfade math: 2.0x multiplier keeps the volume perfectly unity/flat at 0.5
-            processedSample = 2.0f * ((1.0f - currentTone) * lp + currentTone * hp);
-
-            // --- STEP D: SMOOTHED WET/DRY MIX ---
-            float currentMix = smoothedMixValues[sample];
-            channelData[sample] = (rawSample * (1.0f - currentMix)) + (processedSample * currentMix);
-        }
-    }
-
-    // If GUI is active (plugin not closed), PUSH data to the visualiser  
+    // 3. Stream visualiser data if GUI is open in the DAW or Standalone
     if (isGuiActive.load())
     {
-        // 1. Broadcast parameter levels to the visualizer
+        int numSamples = buffer.getNumSamples();
         currentCrushVisual.store(crushAmount);
         currentDownsampleVisual.store(static_cast<float>(downsampleFactor));
 
-        // 2. Calculate the average loudness (RMS) of the block (Mono fallback)
         float rms = buffer.getRMSLevel(0, 0, numSamples);
         currentRmsLevel.store(rms);
 
-        // 3. Collect samples into our FIFO ring buffer (using Left Channel)
         auto* leftChannel = buffer.getReadPointer(0);
-        
         for (int sample = 0; sample < numSamples; ++sample)
         {
             fifoBuffer[fifoIndex] = leftChannel[sample];
             fifoIndex++;
 
-            // If our buffer bucket is full (hit 1024 samples), lock it and swap arrays!
             if (fifoIndex >= fftSize)
             {
                 const juce::ScopedLock sl (fifoCriticalSection);
-                visualizerStorage = fifoBuffer; // Thread-safe handover
+                visualizerStorage = fifoBuffer;
                 fifoIndex = 0;
             }
         }
