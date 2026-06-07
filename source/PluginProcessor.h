@@ -48,7 +48,6 @@ public:
     std::atomic<bool> isGuiActive { false };
     std::atomic<float> currentCrushVisual { 0.0f };
     std::atomic<float> currentDownsampleVisual { 1.0f };
-    std::atomic<float> currentRmsLevel { 0.0f }; // Audio loudness track
 
     // The FIFO Ring Buffer Constants
     static constexpr int fftSize = 1024; 

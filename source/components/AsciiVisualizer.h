@@ -29,7 +29,6 @@ public:
 
         // 2. Fetch our safe 1024 audio sample snapshot from the Step 1 highway
         auto samples = processorRef.getVisualizerSamples();
-        float rms = processorRef.currentRmsLevel.load();
         float crush = processorRef.currentCrushVisual.load();
         float downsample = processorRef.currentDownsampleVisual.load();
 
@@ -80,7 +79,7 @@ public:
         // LAYER A: THE CLEAN OSCILLOSCOPE MODE (Rendered if Downsample is at 0)
         if (useVectorWave)
         {
-            g.setColour (juce::Colour (0xFF55FF77)); // cyber green
+            g.setColour (juce::Colour (0xFF55FF55)); // cyber green
             juce::Path wavePath;
             
             for (int x = 0; x < getWidth(); ++x)

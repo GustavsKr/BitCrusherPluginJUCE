@@ -89,6 +89,7 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+    juce::ignoreUnused (samplesPerBlock);
     auto numChannels = getTotalNumInputChannels();
     
     crusherEngine.prepare (sampleRate, numChannels);
@@ -169,9 +170,6 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         int numSamples = buffer.getNumSamples();
         currentCrushVisual.store(crushAmount);
         currentDownsampleVisual.store(static_cast<float>(downsampleFactor));
-
-        float rms = buffer.getRMSLevel(0, 0, numSamples);
-        currentRmsLevel.store(rms);
 
         auto* leftChannel = buffer.getReadPointer(0);
         for (int sample = 0; sample < numSamples; ++sample)
