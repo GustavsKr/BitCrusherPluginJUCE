@@ -48,11 +48,9 @@ public:
     std::atomic<bool> isGuiActive { false };
     std::atomic<float> currentCrushVisual { 0.0f };
     std::atomic<float> currentDownsampleVisual { 1.0f };
-
-    // The FIFO Ring Buffer Constants
-    static constexpr int fftSize = 1024; 
     
     // Grabs a block of audio samples safely for the UI thread
+    static constexpr int visualizerSize = 512;
     std::vector<float> getVisualizerSamples();
 
 private:
@@ -62,7 +60,6 @@ private:
     
     std::vector<float> fifoBuffer;
     int fifoIndex = 0;
-    bool fifoReady = false;
     std::vector<float> visualizerStorage; // Holds the safe copy for the UI
     juce::CriticalSection fifoCriticalSection; // Lock preventing thread crashes
 

@@ -95,10 +95,9 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     crusherEngine.prepare (sampleRate, numChannels);
 
     // Initialize Visualizer Buffers
-    fifoBuffer.assign (fftSize, 0.0f);
-    visualizerStorage.assign (fftSize, 0.0f);
+    fifoBuffer.assign (visualizerSize, 0.0f);
+    visualizerStorage.assign (visualizerSize, 0.0f);
     fifoIndex = 0;
-    fifoReady = false;
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -156,19 +155,20 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // interleaved by keeping the same state.
 
     // 1. Extract values from APVTS
-    float crushAmount = *apvts.getRawParameterValue("CRUSH");
+    float linearCrush = *apvts.getRawParameterValue("CRUSH");
+    float warpedCrush = std::sqrt(linearCrush);
     int downsampleFactor = static_cast<int>(*apvts.getRawParameterValue("DOWNSAMPLE"));
     float tone = *apvts.getRawParameterValue("TONE");
     float mix = *apvts.getRawParameterValue("MIX");
 
     // 2. Run the BitCrusher DSP
-    crusherEngine.process (buffer, crushAmount, downsampleFactor, tone, mix);
+    crusherEngine.process (buffer, warpedCrush, downsampleFactor, tone, mix);
 
     // 3. Stream visualiser data if GUI is open in the DAW or Standalone
     if (isGuiActive.load())
     {
         int numSamples = buffer.getNumSamples();
-        currentCrushVisual.store(crushAmount);
+        currentCrushVisual.store(linearCrush);
         currentDownsampleVisual.store(static_cast<float>(downsampleFactor));
 
         auto* leftChannel = buffer.getReadPointer(0);
@@ -177,7 +177,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             fifoBuffer[fifoIndex] = leftChannel[sample];
             fifoIndex++;
 
-            if (fifoIndex >= fftSize)
+            if (fifoIndex >= visualizerSize)
             {
                 const juce::ScopedLock sl (fifoCriticalSection);
                 visualizerStorage = fifoBuffer;
@@ -227,14 +227,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::c
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    // Change "BIT_DEPTH" to "CRUSH". Range is 0.0 (Clean) to 1.0 (Destroyed)
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "CRUSH", 
-        "Crush", 
-        0.0f, 
-        1.0f, 
-        0.0f));
-
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("CRUSH", "Crush", 0.0f, 1.0f, 0.0f));    
     params.push_back(std::make_unique<juce::AudioParameterInt>("DOWNSAMPLE", "Downsample", 1, 32, 1));
     params.push_back(std::make_unique<juce::AudioParameterFloat>("TONE", "Tone", 0.0f, 1.0f, 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>("MIX", "Mix", 0.0f, 1.0f, 0.5f));
